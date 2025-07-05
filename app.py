@@ -118,11 +118,25 @@ def build_seat_table(day_to_records):
         name_source_maps[day] = seat_to_name_sources
     rows = []
     mismatch_rows = set()
+    twoday_pass_rows = set()  # Track rows that need 2-day pass highlighting
     for seat in master_seat_list:
         row = {'Seat number': seat}
         names_25 = set(seat_maps['2025-07-25'].get(seat, []))
         names_26 = set(seat_maps['2025-07-26'].get(seat, []))
         names_27 = set(seat_maps['2025-07-27'].get(seat, []))
+        
+        # Check if seat is occupied on both 26th & 27th July by 2-day pass tickets but vacant on 25th July
+        has_2day_pass_26 = '2days' in source_maps['2025-07-26'].get(seat, [])
+        has_2day_pass_27 = '2days' in source_maps['2025-07-27'].get(seat, [])
+        both_26_27_occupied = names_26 and names_27 and names_26 == names_27
+        vacant_25 = not names_25
+        
+        # If both 26th & 27th are occupied by same person with 2-day pass and 25th is vacant
+        if both_26_27_occupied and has_2day_pass_26 and has_2day_pass_27 and vacant_25:
+            # Fill in 25th July with the same name as 26th & 27th July
+            names_25 = names_26  # Use the same names
+            twoday_pass_rows.add(seat)
+        
         row['25th July (Name/s)'] = ', '.join(names_25) if names_25 else ''
         row['26th July (Name/s)'] = ', '.join(names_26) if names_26 else ''
         row['27th July (Name/s)'] = ', '.join(names_27) if names_27 else ''
@@ -137,9 +151,9 @@ def build_seat_table(day_to_records):
         rows.append(row)
     df = pd.DataFrame(rows)
     double_booked = {day: {seat for seat, names in seat_maps[day].items() if len(names) > 1} for day in day_keys}
-    return df, double_booked, mismatch_rows
+    return df, double_booked, mismatch_rows, twoday_pass_rows
 
-def style_seat_table(df, double_booked, mismatch_rows):
+def style_seat_table(df, double_booked, mismatch_rows, twoday_pass_rows):
     def highlight_cell(val, seat, day_col, sources, name_sources, names_25):
         col_to_day = {
             '25th July (Name/s)': '2025-07-25',
@@ -163,8 +177,10 @@ def style_seat_table(df, double_booked, mismatch_rows):
                         return 'background-color: #ffd699'  # orange
         return ''
     def highlight_row(row):
-        if row['Seat number'] in mismatch_rows:
-            return ['background-color: #fff3b0'] * (len(row)-4) + ['']*4
+        if row['Seat number'] in twoday_pass_rows:
+            return ['background-color: #90EE90'] * (len(row)-4) + ['']*4  # light green for 2-day pass rows
+        elif row['Seat number'] in mismatch_rows:
+            return ['background-color: #fff3b0'] * (len(row)-4) + ['']*4  # yellow for mismatch rows
         return [''] * len(row)
     styled = df.style
     for day_col, source_col, name_source_col in zip(
@@ -182,98 +198,94 @@ def style_seat_table(df, double_booked, mismatch_rows):
     styled = styled.apply(highlight_row, axis=1)
     return styled
 
-def render_seat_map(seat_map, seat_to_names, day_label, seat_to_sources, seat_to_name_sources, day_choice):
+def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_sources, day_choice):
     st.markdown(f"### {day_label} - Visual Seat Map")
+    
+    # Helper function to get seat data from table
+    def get_seat_data(seat_number):
+        seat_row = seat_df[seat_df['Seat number'] == seat_number]
+        if seat_row.empty:
+            return '', False
+        if day_choice == '2025-07-25':
+            return seat_row.iloc[0]['25th July (Name/s)'], bool(seat_row.iloc[0]['25th July (Name/s)'])
+        elif day_choice == '2025-07-26':
+            return seat_row.iloc[0]['26th July (Name/s)'], bool(seat_row.iloc[0]['26th July (Name/s)'])
+        elif day_choice == '2025-07-27':
+            return seat_row.iloc[0]['27th July (Name/s)'], bool(seat_row.iloc[0]['27th July (Name/s)'])
+        return '', False
+    
     # Stage block
     st.markdown('<div style="width:100%;text-align:center;font-size:1.2em;font-weight:bold;background:#333;color:#fff;padding:8px 0;margin-bottom:10px;">STAGE</div>', unsafe_allow_html=True)
     # Row rendering
     for idx, row in enumerate(seat_map):
         row_label = row['row']
-        # Side seats (left)
-        left_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 0]
+        # Side seats (right) - swapped to be on the right side
+        right_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 0]
         # Center seats
         center_seats = row['center']
-        # Side seats (right)
-        right_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 1]
+        # Side seats (left) - swapped to be on the left side
+        left_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 1]
         # Row container
         row_html = '<div style="display:flex;align-items:center;justify-content:center;margin-bottom:2px;">'
-        # Left side seats
-        for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):])):
-            occupied = seat in seat_to_names
-            # Check if seat has 2-day pass booking but is vacant on 25th July
-            has_2day_pass = False
-            if day_choice == '2025-07-25' and seat in seat_to_name_sources:
-                for name, source in seat_to_name_sources[seat]:
-                    if source == '2days':
-                        has_2day_pass = True
-                        break
+        # Left side seats - sorted from aisle to outside (ascending order)
+        for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):]), reverse=True):
+            seat_name, has_name = get_seat_data(seat)
             
-            if row_label in ['A', 'B', 'C', 'D', 'E'] and not occupied:
-                color = '#ff4d4d'  # red
-            elif day_choice == '2025-07-25' and row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for GG-MM on 25th July
-            elif has_2day_pass and not occupied:
-                color = '#90EE90'  # light green for 2-day pass vacant seats on 25th July
-            elif row_label in ['K', 'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'JJ', 'KK', 'LL', 'MM'] and not occupied:
-                color = '#ffa500'  # orange
-            elif occupied:
-                color = '#4CAF50'  # green
+            # Apply highlighting rules based on seat table data
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
+                color = '#ffa500'  # orange for seats G108 to G112
+            elif has_name:
+                color = '#4CAF50'  # green for seats with names
+            elif row_label in ['A', 'B', 'C', 'D', 'E']:
+                color = '#ff4d4d'  # red for vacant seats in rows A-E
+            elif row_label == 'K':
+                color = '#ffa500'  # orange for vacant seats in row K
             else:
-                color = '#fff'     # white
+                color = '#fff'     # white for all other vacant seats
             row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
         # Aisle between side and center
         if left_seats and center_seats:
             row_html += '<div style="width:18px;"></div>'
         # Center seats
         for seat in center_seats:
-            occupied = seat in seat_to_names
-            # Check if seat has 2-day pass booking but is vacant on 25th July
-            has_2day_pass = False
-            if day_choice == '2025-07-25' and seat in seat_to_name_sources:
-                for name, source in seat_to_name_sources[seat]:
-                    if source == '2days':
-                        has_2day_pass = True
-                        break
+            seat_name, has_name = get_seat_data(seat)
             
-            if row_label in ['A', 'B', 'C', 'D', 'E'] and not occupied:
-                color = '#ff4d4d'
-            elif day_choice == '2025-07-25' and row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for GG-MM on 25th July
-            elif has_2day_pass and not occupied:
-                color = '#90EE90'  # light green for 2-day pass vacant seats on 25th July
-            elif row_label in ['K', 'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'JJ', 'KK', 'LL', 'MM'] and not occupied:
-                color = '#ffa500'  # orange
-            elif occupied:
-                color = '#4CAF50'
+            # Apply highlighting rules based on seat table data
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
+                color = '#ffa500'  # orange for seats G108 to G112
+            elif has_name:
+                color = '#4CAF50'  # green for seats with names
+            elif row_label in ['A', 'B', 'C', 'D', 'E']:
+                color = '#ff4d4d'  # red for vacant seats in rows A-E
+            elif row_label == 'K':
+                color = '#ffa500'  # orange for vacant seats in row K
             else:
-                color = '#fff'
+                color = '#fff'     # white for all other vacant seats
             row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
         # Aisle between center and right side
         if right_seats and center_seats:
             row_html += '<div style="width:18px;"></div>'
         # Right side seats
         for seat in sorted(right_seats, key=lambda x: int(x[len(row_label):])):
-            occupied = seat in seat_to_names
-            # Check if seat has 2-day pass booking but is vacant on 25th July
-            has_2day_pass = False
-            if day_choice == '2025-07-25' and seat in seat_to_name_sources:
-                for name, source in seat_to_name_sources[seat]:
-                    if source == '2days':
-                        has_2day_pass = True
-                        break
+            seat_name, has_name = get_seat_data(seat)
             
-            if row_label in ['A', 'B', 'C', 'D', 'E'] and not occupied:
-                color = '#ff4d4d'
-            elif day_choice == '2025-07-25' and row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for GG-MM on 25th July
-            elif has_2day_pass and not occupied:
-                color = '#90EE90'  # light green for 2-day pass vacant seats on 25th July
-            elif row_label in ['K', 'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'JJ', 'KK', 'LL', 'MM'] and not occupied:
-                color = '#ffa500'  # orange
-            elif occupied:
-                color = '#4CAF50'
+            # Apply highlighting rules based on seat table data
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
+                color = '#ffa500'  # orange for seats G108 to G112
+            elif has_name:
+                color = '#4CAF50'  # green for seats with names
+            elif row_label in ['A', 'B', 'C', 'D', 'E']:
+                color = '#ff4d4d'  # red for vacant seats in rows A-E
+            elif row_label == 'K':
+                color = '#ffa500'  # orange for vacant seats in row K
             else:
-                color = '#fff'
+                color = '#fff'     # white for all other vacant seats
             row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
         row_html += f'<span style="margin-left:8px;font-size:0.8em;color:#333;">{row_label}</span>'
         row_html += '</div>'
@@ -285,11 +297,11 @@ def render_seat_map(seat_map, seat_to_names, day_label, seat_to_sources, seat_to
 def main():
     st.title('NAFA Film Festival 2025 - Seat Allocation Overview')
     day_to_records = load_and_normalize()
-    seat_df, double_booked, mismatch_rows = build_seat_table(day_to_records)
+    seat_df, double_booked, mismatch_rows, twoday_pass_rows = build_seat_table(day_to_records)
     tabs = st.tabs(["Seat Table", "Visual Seat Map"])
     with tabs[0]:
         st.subheader('Seat Assignment Table')
-        st.dataframe(style_seat_table(seat_df, double_booked, mismatch_rows), use_container_width=True)
+        st.dataframe(style_seat_table(seat_df, double_booked, mismatch_rows, twoday_pass_rows), use_container_width=True)
         # Unallocated names per day
         st.subheader('Names with no seat allocated (per day)')
         day_labels = {'2025-07-25': '25th July', '2025-07-26': '26th July', '2025-07-27': '27th July'}
@@ -306,7 +318,7 @@ def main():
         day_choice = st.selectbox('Select Day', list(day_labels.keys()), format_func=lambda x: day_labels[x])
         seat_map = generate_master_seat_map()
         seat_to_names, seat_to_sources, seat_to_name_sources, _ = organize_seats(day_to_records[day_choice])
-        render_seat_map(seat_map, seat_to_names, day_labels[day_choice], seat_to_sources, seat_to_name_sources, day_choice)
+        render_seat_map(seat_map, seat_df, day_labels[day_choice], seat_to_sources, seat_to_name_sources, day_choice)
 
 if __name__ == '__main__':
     main() 
