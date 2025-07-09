@@ -230,12 +230,13 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         # Left side seats - sorted from aisle to outside (ascending order)
         for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):]), reverse=True):
             seat_name, has_name = get_seat_data(seat)
-            
             # Apply highlighting rules based on seat table data
             if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
                 color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'  # orange for seats G108 to G112
+            elif seat in ['Q12', 'Q14', 'Q16']:
+                color = '#ffa500'  # orange for Q12, Q14, Q16
             elif has_name:
                 color = '#4CAF50'  # green for seats with names
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
@@ -251,12 +252,13 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         # Center seats
         for seat in reversed(center_seats):
             seat_name, has_name = get_seat_data(seat)
-            
             # Apply highlighting rules based on seat table data
             if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
                 color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'  # orange for seats G108 to G112
+            elif seat in ['Q12', 'Q14', 'Q16']:
+                color = '#ffa500'  # orange for Q12, Q14, Q16
             elif has_name:
                 color = '#4CAF50'  # green for seats with names
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
@@ -272,12 +274,15 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         # Right side seats
         for seat in sorted(right_seats, key=lambda x: int(x[len(row_label):])):
             seat_name, has_name = get_seat_data(seat)
-            
             # Apply highlighting rules based on seat table data
             if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
                 color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'  # orange for seats G108 to G112
+            elif seat in ['Q12', 'Q14', 'Q16']:
+                color = '#ffa500'  # orange for Q12, Q14, Q16
+            elif row_label in ['L', 'M', 'N', 'P'] and not has_name:
+                color = '#ffa500'  # orange for vacant RHS seats in L, M, N, P
             elif has_name:
                 color = '#4CAF50'  # green for seats with names
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
