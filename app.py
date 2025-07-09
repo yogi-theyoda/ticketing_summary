@@ -249,7 +249,7 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         if left_seats and center_seats:
             row_html += '<div style="width:18px;"></div>'
         # Center seats
-        for seat in center_seats:
+        for seat in reversed(center_seats):
             seat_name, has_name = get_seat_data(seat)
             
             # Apply highlighting rules based on seat table data
