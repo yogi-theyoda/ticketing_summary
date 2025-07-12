@@ -306,6 +306,90 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         if row_label in ['K', 'V', 'FF', 'BB']:
             st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
 
+    # Gallery groupings
+    gallery_map = {
+        'Celebrity Gallery': [chr(x) for x in range(ord('A'), ord('K')+1)],
+        'Orchestra Gallery': [chr(x) for x in range(ord('L'), ord('V')+1)],
+        'Mezzanine Level': ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'],
+        'Balcony': ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']
+    }
+    # For double-letter rows in Orchestra
+    gallery_map['Orchestra Gallery'] += ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'] if False else []  # not needed, handled above
+
+    # Prepare color logic for counting
+    special_orange_seats = set(['L3','L5','L7','L9','L11','L13','M3','M5','M7','M9','M11','M13','M15','N3','N5','N7','N9','N11','N13','N15'])
+    booked_count = {g: 0 for g in gallery_map}
+    blocked_count = {g: 0 for g in gallery_map}
+    available_count = {g: 0 for g in gallery_map}
+
+    # Build a mapping from row to gallery
+    row_to_gallery = {}
+    for gallery, rows in gallery_map.items():
+        for r in rows:
+            row_to_gallery[r] = gallery
+
+    # Count seats by color for this day
+    seat_map_data = generate_master_seat_map()
+    for row in seat_map_data:
+        row_label = row['row']
+        gallery = row_to_gallery.get(row_label)
+        if not gallery:
+            continue
+        # Side seats (right) - swapped to be on the right side
+        right_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 0]
+        # Center seats
+        center_seats = row['center']
+        # Side seats (left) - swapped to be on the left side
+        left_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 1]
+        # All seats in row
+        all_seats = list(left_seats) + list(center_seats) + list(right_seats)
+        for seat in all_seats:
+            seat_name, has_name = get_seat_data(seat)
+            color = None
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = 'orange'
+            elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
+                color = 'orange'
+            elif day_choice == '2025-07-25' and seat in ['Q12', 'Q14', 'Q16']:
+                color = 'orange'
+            elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
+                color = 'orange'
+            elif has_name:
+                color = 'green'
+            elif row_label in ['A', 'B', 'C', 'D', 'E']:
+                color = 'red'
+            elif row_label == 'K':
+                color = 'orange'
+            elif day_choice == '2025-07-25' and row_label in ['L', 'M', 'N', 'P'] and seat in right_seats and not has_name:
+                color = 'orange'
+            else:
+                color = 'none'
+            if color == 'green':
+                booked_count[gallery] += 1
+            elif color == 'orange' or color == 'red':
+                blocked_count[gallery] += 1
+            else:
+                available_count[gallery] += 1
+
+    # Show legend
+    st.markdown("""
+    <div style='display:flex;gap:24px;margin-bottom:8px;'>
+      <span style='display:flex;align-items:center;gap:4px;'><span style='display:inline-block;width:18px;height:18px;background:#4CAF50;border:1px solid #888;'></span>Booked (Green)</span>
+      <span style='display:flex;align-items:center;gap:4px;'><span style='display:inline-block;width:18px;height:18px;background:#ffa500;border:1px solid #888;'></span>Blocked (Orange)</span>
+      <span style='display:flex;align-items:center;gap:4px;'><span style='display:inline-block;width:18px;height:18px;background:#ff4d4d;border:1px solid #888;'></span>Blocked (Red)</span>
+      <span style='display:flex;align-items:center;gap:4px;'><span style='display:inline-block;width:18px;height:18px;background:#fff;border:1px solid #888;'></span>Available (No highlight)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Show summary table
+    st.markdown("<b>Gallery Seat Summary for this day</b>", unsafe_allow_html=True)
+    st.table({
+        'Gallery': list(gallery_map.keys()),
+        'Booked (Green)': [booked_count[g] for g in gallery_map],
+        'Blocked (Orange/Red)': [blocked_count[g] for g in gallery_map],
+        'Available': [available_count[g] for g in gallery_map],
+    })
+
 def main():
     st.title('NAFA Film Festival 2025 - Seat Allocation Overview')
     day_to_records = load_and_normalize()
