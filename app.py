@@ -216,95 +216,183 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
     
     # Stage block
     st.markdown('<div style="width:100%;text-align:center;font-size:1.2em;font-weight:bold;background:#333;color:#fff;padding:8px 0;margin-bottom:10px;">STAGE</div>', unsafe_allow_html=True)
-    # Row rendering
+
+    # --- Custom HTML+JS seat map with tooltips ---
+    import streamlit.components.v1 as components
+    seat_map_html = """
+    <style>
+    .seat-row { display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+    .seat-box { width: 22px; height: 22px; border: 1px solid #888; margin: 1px; display: flex; align-items: center; justify-content: center; font-size: 0.7em; position: relative; background: #fff; cursor: pointer; }
+    .seat-label { margin-left: 8px; font-size: 0.8em; color: #333; }
+    .aisle { width: 18px; }
+    .tooltip {
+      visibility: hidden;
+      background: #222;
+      color: #fff;
+      text-align: center;
+      border-radius: 4px;
+      padding: 2px 8px;
+      position: absolute;
+      z-index: 10;
+      bottom: 120%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .seat-box:hover .tooltip {
+      visibility: visible;
+      opacity: 1;
+    }
+    .tooltip-below {
+      bottom: auto !important;
+      top: 120%;
+    }
+    </style>
+    <div id="seatmap-outer">
+    """
     for idx, row in enumerate(seat_map):
         row_label = row['row']
-        # Side seats (right) - swapped to be on the right side
         right_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 0]
-        # Center seats
         center_seats = row['center']
-        # Side seats (left) - swapped to be on the left side
         left_seats = [s for s in row['side'] if int(s[len(row_label):]) % 2 == 1]
-        # Row container
-        row_html = '<div style="display:flex;align-items:center;justify-content:center;margin-bottom:2px;">'
         special_orange_seats = set(['L3','L5','L7','L9','L11','L13','M3','M5','M7','M9','M11','M13','M15','N3','N5','N7','N9','N11','N13','N15'])
-        # Left side seats - sorted from aisle to outside (ascending order)
+        # Remove LHS of M/N and L3 from special_orange_seats for blocking
+        unblocked_seats = set()
+        if row_label == 'M':
+            unblocked_seats.update([f'M{n}' for n in range(1, 16, 2)])
+        if row_label == 'N':
+            unblocked_seats.update([f'N{n}' for n in range(1, 16, 2)])
+        if row_label == 'L':
+            unblocked_seats.add('L3')
+        seat_map_html += '<div class="seat-row">'
+        tooltip_class = 'tooltip-below' if idx == 0 else ''
+        # Left side seats
         for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):]), reverse=True):
             seat_name, has_name = get_seat_data(seat)
-            # Apply highlighting rules based on seat table data
-            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            # Unblock LHS of M/N and L3
+            if seat in unblocked_seats:
+                color = '#fff'
+                blocked = False
+            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
-                color = '#ffa500'  # orange for seats G108 to G112
+                color = '#ffa500'
+                blocked = True
             elif day_choice == '2025-07-25' and seat in ['Q12', 'Q14', 'Q16']:
-                color = '#ffa500'  # orange for Q12, Q14, Q16 (25th July only)
+                color = '#ffa500'
+                blocked = True
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
-                color = '#ffa500'  # orange for special seats on 25th and 27th July
+                color = '#ffa500'
+                blocked = True
             elif has_name:
-                color = '#4CAF50'  # green for seats with names
+                color = '#4CAF50'
+                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
-                color = '#ff4d4d'  # red for vacant seats in rows A-E
+                color = '#ff4d4d'
+                blocked = True
             elif row_label == 'K':
-                color = '#ffa500'  # orange for vacant seats in row K
+                color = '#ffa500'
+                blocked = True
             else:
-                color = '#fff'     # white for all other vacant seats
-            row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
-        # Aisle between side and center
+                color = '#fff'
+                blocked = False
+            if has_name:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Name(s): {seat_name}"
+            elif blocked:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Blocked"
+            else:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Available"
+            seat_map_html += f'<div class="seat-box" style="background:{color};"><span class="tooltip {tooltip_class}">{tooltip_text}</span></div>'
         if left_seats and center_seats:
-            row_html += '<div style="width:18px;"></div>'
-        # Center seats
+            seat_map_html += '<div class="aisle"></div>'
         for seat in reversed(center_seats):
             seat_name, has_name = get_seat_data(seat)
-            # Apply highlighting rules based on seat table data
-            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            if seat in unblocked_seats:
+                color = '#fff'
+                blocked = False
+            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
-                color = '#ffa500'  # orange for seats G108 to G112
+                color = '#ffa500'
+                blocked = True
             elif day_choice == '2025-07-25' and seat in ['Q12', 'Q14', 'Q16']:
-                color = '#ffa500'  # orange for Q12, Q14, Q16 (25th July only)
+                color = '#ffa500'
+                blocked = True
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
-                color = '#ffa500'  # orange for special seats on 25th and 27th July
+                color = '#ffa500'
+                blocked = True
             elif has_name:
-                color = '#4CAF50'  # green for seats with names
+                color = '#4CAF50'
+                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
-                color = '#ff4d4d'  # red for vacant seats in rows A-E
+                color = '#ff4d4d'
+                blocked = True
             elif row_label == 'K':
-                color = '#ffa500'  # orange for vacant seats in row K
+                color = '#ffa500'
+                blocked = True
             else:
-                color = '#fff'     # white for all other vacant seats
-            row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
-        # Aisle between center and right side
+                color = '#fff'
+                blocked = False
+            if has_name:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Name(s): {seat_name}"
+            elif blocked:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Blocked"
+            else:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Available"
+            seat_map_html += f'<div class="seat-box" style="background:{color};"><span class="tooltip {tooltip_class}">{tooltip_text}</span></div>'
         if right_seats and center_seats:
-            row_html += '<div style="width:18px;"></div>'
-        # Right side seats
+            seat_map_html += '<div class="aisle"></div>'
         for seat in sorted(right_seats, key=lambda x: int(x[len(row_label):])):
             seat_name, has_name = get_seat_data(seat)
-            # Apply highlighting rules based on seat table data
-            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'  # orange for all seats in rows GG-MM (highest priority)
+            if seat in unblocked_seats:
+                color = '#fff'
+                blocked = False
+            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
-                color = '#ffa500'  # orange for seats G108 to G112
+                color = '#ffa500'
+                blocked = True
             elif day_choice == '2025-07-25' and seat in ['Q12', 'Q14', 'Q16']:
-                color = '#ffa500'  # orange for Q12, Q14, Q16 (25th July only)
+                color = '#ffa500'
+                blocked = True
             elif day_choice == '2025-07-25' and row_label in ['L', 'M', 'N', 'P'] and not has_name:
-                color = '#ffa500'  # orange for vacant RHS seats in L, M, N, P (25th July only)
+                color = '#ffa500'
+                blocked = True
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
-                color = '#ffa500'  # orange for special seats on 25th and 27th July
+                color = '#ffa500'
+                blocked = True
             elif has_name:
-                color = '#4CAF50'  # green for seats with names
+                color = '#4CAF50'
+                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
-                color = '#ff4d4d'  # red for vacant seats in rows A-E
+                color = '#ff4d4d'
+                blocked = True
             elif row_label == 'K':
-                color = '#ffa500'  # orange for vacant seats in row K
+                color = '#ffa500'
+                blocked = True
             else:
-                color = '#fff'     # white for all other vacant seats
-            row_html += f'<div style="width:22px;height:22px;border:1px solid #888;margin:1px;background:{color};display:flex;align-items:center;justify-content:center;font-size:0.7em;"></div>'
-        row_html += f'<span style="margin-left:8px;font-size:0.8em;color:#333;">{row_label}</span>'
-        row_html += '</div>'
-        st.markdown(row_html, unsafe_allow_html=True)
-        # Aisle between K/L, V/AA, FF/GG, and BB/CC
+                color = '#fff'
+                blocked = False
+            if has_name:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Name(s): {seat_name}"
+            elif blocked:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Blocked"
+            else:
+                tooltip_text = f"Row {row_label}, Seat {seat} — Available"
+            seat_map_html += f'<div class="seat-box" style="background:{color};"><span class="tooltip {tooltip_class}">{tooltip_text}</span></div>'
+        seat_map_html += f'<span class="seat-label" title="Row {row_label}">{row_label}</span>'
+        seat_map_html += '</div>'
         if row_label in ['K', 'V', 'FF', 'BB']:
-            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            seat_map_html += '<div style="height:12px;"></div>'
+    seat_map_html += '</div>'
+    components.html(seat_map_html, height=700, scrolling=True)
 
     # Gallery groupings
     gallery_map = {
@@ -394,7 +482,7 @@ def main():
     st.title('NAFA Film Festival 2025 - Seat Allocation Overview')
     day_to_records = load_and_normalize()
     seat_df, double_booked, mismatch_rows, twoday_pass_rows = build_seat_table(day_to_records)
-    tabs = st.tabs(["Seat Table", "Visual Seat Map"])
+    tabs = st.tabs(["Seat Table", "Visual Seat Map"])  # Remove Tickets Report tab
     with tabs[0]:
         st.subheader('Seat Assignment Table')
         st.dataframe(style_seat_table(seat_df, double_booked, mismatch_rows, twoday_pass_rows), use_container_width=True)
