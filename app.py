@@ -141,8 +141,10 @@ def build_seat_table(day_to_records):
         row['26th July (Name/s)'] = ', '.join(names_26) if names_26 else ''
         row['27th July (Name/s)'] = ', '.join(names_27) if names_27 else ''
         # Track sources for cell highlighting
+        row['__sources_25'] = source_maps['2025-07-25'].get(seat, [])
         row['__sources_26'] = source_maps['2025-07-26'].get(seat, [])
         row['__sources_27'] = source_maps['2025-07-27'].get(seat, [])
+        row['__name_sources_25'] = name_source_maps['2025-07-25'].get(seat, [])
         row['__name_sources_26'] = name_source_maps['2025-07-26'].get(seat, [])
         row['__name_sources_27'] = name_source_maps['2025-07-27'].get(seat, [])
         # Highlight if 25th July and (26th or 27th) have names and mismatch
@@ -163,6 +165,9 @@ def style_seat_table(df, double_booked, mismatch_rows, twoday_pass_rows):
         # Double-booked highlight
         if val and seat in double_booked.get(col_to_day[day_col], set()):
             return 'background-color: #ffcccc'
+        # 25th July highlight (light yellow)
+        if day_col == '25th July (Name/s)' and '25' in sources:
+            return 'background-color: #fff2cc'
         # 26th July highlight (light blue)
         if day_col == '26th July (Name/s)' and '26' in sources:
             return 'background-color: #cce6ff'
@@ -185,16 +190,13 @@ def style_seat_table(df, double_booked, mismatch_rows, twoday_pass_rows):
     styled = df.style
     for day_col, source_col, name_source_col in zip(
         ['25th July (Name/s)', '26th July (Name/s)', '27th July (Name/s)'],
-        [None, '__sources_26', '__sources_27'],
-        [None, '__name_sources_26', '__name_sources_27']
+        ['__sources_25', '__sources_26', '__sources_27'],
+        ['__name_sources_25', '__name_sources_26', '__name_sources_27']
     ):
-        if source_col:
-            styled = styled.apply(
-                lambda col: [highlight_cell(val, seat, day_col, sources, name_sources, set(df.loc[i, '25th July (Name/s)'].split(', ')) if df.loc[i, '25th July (Name/s)'] else set())
-                             for i, (val, seat, sources, name_sources) in enumerate(zip(col, df['Seat number'], df[source_col], df[name_source_col]))],
-                axis=0, subset=[day_col])
-        else:
-            styled = styled.apply(lambda col: [highlight_cell(val, seat, day_col, [], [], set()) for val, seat in zip(col, df['Seat number'])], axis=0, subset=[day_col])
+        styled = styled.apply(
+            lambda col: [highlight_cell(val, seat, day_col, sources, name_sources, set(df.loc[i, '25th July (Name/s)'].split(', ')) if df.loc[i, '25th July (Name/s)'] else set())
+                         for i, (val, seat, sources, name_sources) in enumerate(zip(col, df['Seat number'], df[source_col], df[name_source_col]))],
+            axis=0, subset=[day_col])
     styled = styled.apply(highlight_row, axis=1)
     return styled
 
@@ -273,8 +275,12 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         # Left side seats
         for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):]), reverse=True):
             seat_name, has_name = get_seat_data(seat)
-            # Unblock LHS of M/N and L3
-            if seat in unblocked_seats:
+            # Check if seat has a booking first
+            if has_name:
+                color = '#4CAF50'
+                blocked = False
+            # Then check if it's unblocked (but not booked)
+            elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
             elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
@@ -289,9 +295,6 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
                 color = '#ffa500'
                 blocked = True
-            elif has_name:
-                color = '#4CAF50'
-                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
                 color = '#ff4d4d'
                 blocked = True
@@ -312,7 +315,12 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             seat_map_html += '<div class="aisle"></div>'
         for seat in reversed(center_seats):
             seat_name, has_name = get_seat_data(seat)
-            if seat in unblocked_seats:
+            # Check if seat has a booking first
+            if has_name:
+                color = '#4CAF50'
+                blocked = False
+            # Then check if it's unblocked (but not booked)
+            elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
             elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
@@ -327,9 +335,6 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
                 color = '#ffa500'
                 blocked = True
-            elif has_name:
-                color = '#4CAF50'
-                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
                 color = '#ff4d4d'
                 blocked = True
@@ -350,7 +355,12 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             seat_map_html += '<div class="aisle"></div>'
         for seat in sorted(right_seats, key=lambda x: int(x[len(row_label):])):
             seat_name, has_name = get_seat_data(seat)
-            if seat in unblocked_seats:
+            # Check if seat has a booking first
+            if has_name:
+                color = '#4CAF50'
+                blocked = False
+            # Then check if it's unblocked (but not booked)
+            elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
             elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
@@ -368,9 +378,6 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             elif day_choice in ['2025-07-25', '2025-07-27'] and seat in special_orange_seats:
                 color = '#ffa500'
                 blocked = True
-            elif has_name:
-                color = '#4CAF50'
-                blocked = False
             elif row_label in ['A', 'B', 'C', 'D', 'E']:
                 color = '#ff4d4d'
                 blocked = True
