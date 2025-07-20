@@ -182,6 +182,10 @@ def style_seat_table(df, double_booked, mismatch_rows, twoday_pass_rows):
                         return 'background-color: #ffd699'  # orange
         return ''
     def highlight_row(row):
+        # Always highlight GG-MM rows in orange
+        row_prefix = ''.join([c for c in row['Seat number'] if c.isalpha()])
+        if row_prefix in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+            return ['background-color: #ffa500'] * (len(row)-4) + ['']*4
         if row['Seat number'] in twoday_pass_rows:
             return ['background-color: #90EE90'] * (len(row)-4) + ['']*4  # light green for 2-day pass rows
         elif row['Seat number'] in mismatch_rows:
@@ -275,17 +279,18 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
         # Left side seats
         for seat in sorted(left_seats, key=lambda x: int(x[len(row_label):]), reverse=True):
             seat_name, has_name = get_seat_data(seat)
+            # Always highlight GG-MM rows in orange
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
             # Check if seat has a booking first
-            if has_name:
+            elif has_name:
                 color = '#4CAF50'
                 blocked = False
             # Then check if it's unblocked (but not booked)
             elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
-            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'
-                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'
                 blocked = True
@@ -315,17 +320,16 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             seat_map_html += '<div class="aisle"></div>'
         for seat in reversed(center_seats):
             seat_name, has_name = get_seat_data(seat)
-            # Check if seat has a booking first
-            if has_name:
+            # Always highlight GG-MM rows in orange
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
+            elif has_name:
                 color = '#4CAF50'
                 blocked = False
-            # Then check if it's unblocked (but not booked)
             elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
-            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'
-                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'
                 blocked = True
@@ -355,17 +359,16 @@ def render_seat_map(seat_map, seat_df, day_label, seat_to_sources, seat_to_name_
             seat_map_html += '<div class="aisle"></div>'
         for seat in sorted(right_seats, key=lambda x: int(x[len(row_label):])):
             seat_name, has_name = get_seat_data(seat)
-            # Check if seat has a booking first
-            if has_name:
+            # Always highlight GG-MM rows in orange
+            if row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
+                color = '#ffa500'
+                blocked = True
+            elif has_name:
                 color = '#4CAF50'
                 blocked = False
-            # Then check if it's unblocked (but not booked)
             elif seat in unblocked_seats:
                 color = '#fff'
                 blocked = False
-            elif row_label in ['GG', 'HH', 'JJ', 'KK', 'LL', 'MM']:
-                color = '#ffa500'
-                blocked = True
             elif row_label == 'G' and seat in ['G108', 'G109', 'G110', 'G111', 'G112']:
                 color = '#ffa500'
                 blocked = True
